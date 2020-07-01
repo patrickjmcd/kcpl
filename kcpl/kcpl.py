@@ -3,12 +3,15 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import date, timedelta
 import logging
+import os
 
-logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s -  - %(message)s", level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -  - %(message)s", level=logging.INFO)
 
 day_before_yesterday = date.today() - timedelta(days=2)
 yesterday = date.today() - timedelta(days=1)
 today = date.today()
+
 
 class KCPL():
     def __init__(self, username, password):
@@ -27,8 +30,10 @@ class KCPL():
     def login(self):
         self.session = requests.Session()
         logging.info("Logging in with username: " + self.username)
-        loginPayload = {"username": str(self.username), "password": str(self.password)}
-        r = self.session.post(url=self.loginUrl, data=loginPayload, allow_redirects=False)
+        loginPayload = {"username": str(
+            self.username), "password": str(self.password)}
+        r = self.session.post(
+            url=self.loginUrl, data=loginPayload, allow_redirects=False)
         logging.debug("Login response: " + str(r.status_code))
         r = self.session.get(self.accountSummaryUrl)
         soup = BeautifulSoup(r.text, 'html.parser')
@@ -36,8 +41,10 @@ class KCPL():
         if len(accountData) == 0:
             self.loggedIn = False
         else:
-            self.accountNumber = json.loads(accountData[0].contents[0])["accountNumber"]
-            dashboardData = self.session.get(self.accountDashboardUrl.format(accountNum=self.accountNumber)).json()
+            self.accountNumber = json.loads(accountData[0].contents[0])[
+                "accountNumber"]
+            dashboardData = self.session.get(
+                self.accountDashboardUrl.format(accountNum=self.accountNumber)).json()
             self.premiseId = dashboardData["addresses"][0]["premiseId"]
             self.loggedIn = self.accountNumber is not None and self.premiseId is not None
 
@@ -47,20 +54,35 @@ class KCPL():
         self.session = None
         self.loggedIn = False
 
-
     def getUsage(self, start=day_before_yesterday, end=yesterday, query_scale="d"):
         """Fetches all usage data from the given period."""
         if not self.loggedIn:
             logging.error("Must login first")
             return
-        url = self.usageDataUrl.format(premiseId=self.premiseId, query_scale=query_scale, start=start, end=end)
+        url = self.usageDataUrl.format(
+            premiseId=self.premiseId, query_scale=query_scale, start=start, end=end)
         logging.debug("fetching {}".format(url))
         usageData = self.session.get(url).json()
         return usageData["data"]
 
+
 def getCreds():
-    with open("../credentials.json", 'r') as f:
-        return json.loads(f.read())
+    creds = {}
+    try:
+        with open("../credentials.json", 'r') as f:
+            creds = json.loads(f.read())
+    except FileNotFoundError:
+        logging.info("no credentials.json file, fetching from env variables")
+        u = os.getenv("KCPL_USERNAME")
+        p = os.getenv("KCPL_PASSWORD")
+        if not u and not p:
+            raise Exception("no credentials")
+        creds = {
+            "username": u,
+            "password": p
+        }
+    return creds
+
 
 if __name__ == "__main__":
     # Read the credentials.json file
